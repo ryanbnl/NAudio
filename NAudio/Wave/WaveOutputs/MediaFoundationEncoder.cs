@@ -229,6 +229,27 @@ namespace NAudio.Wave
                 position += duration;
             } while (duration > 0);
 
+		    //We are going to check the stats of the writer and ensure no more bytes are queued before we call DoFinalize()
+		    MF_SINK_WRITER_STATISTICS stats = new MF_SINK_WRITER_STATISTICS();
+		    stats.cb = Marshal.SizeOf(stats);
+		    bool finished = false;
+
+		    while (!finished)
+		    {
+		        writer.GetStatistics(streamIndex, stats);
+
+		        if (stats.dwByteCountQueued == 0)
+		        {
+		            finished = true;
+		        }
+		        else
+		        {
+		        	//sleeping could be optional, but don't want to hog the CPU
+		            System.Threading.Thread.Sleep(100);
+		        }
+		    }
+		    //End workaround            
+
             writer.DoFinalize();
         }
 
