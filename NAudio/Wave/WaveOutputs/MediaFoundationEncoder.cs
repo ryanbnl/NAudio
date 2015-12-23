@@ -216,7 +216,7 @@ namespace NAudio.Wave
 
         private void PerformEncode(IMFSinkWriter writer, int streamIndex, IWaveProvider inputProvider)
         {
-            int maxLength = inputProvider.WaveFormat.AverageBytesPerSecond * 4;
+            int maxLength = inputProvider.WaveFormat.AverageBytesPerSecond*4;
             var managedBuffer = new byte[maxLength];
 
             writer.BeginWriting();
@@ -229,28 +229,50 @@ namespace NAudio.Wave
                 position += duration;
             } while (duration > 0);
 
-		    //We are going to check the stats of the writer and ensure no more bytes are queued before we call DoFinalize()
-		    MF_SINK_WRITER_STATISTICS stats = new MF_SINK_WRITER_STATISTICS();
-		    stats.cb = Marshal.SizeOf(stats);
-		    bool finished = false;
+            //We are going to check the stats of the writer and ensure no more bytes are queued before we call DoFinalize()
+            MF_SINK_WRITER_STATISTICS stats = new MF_SINK_WRITER_STATISTICS();
+            stats.cb = Marshal.SizeOf(stats);
+            bool finished = false;
 
-		    while (!finished)
-		    {
-		        writer.GetStatistics(streamIndex, stats);
+            const int sleepMs = 10;
+            const int maxTimeInSeconds = 5;
+            const int maxTries = (maxTimeInSeconds*1000)/sleepMs;
 
-		        if (stats.dwByteCountQueued == 0)
-		        {
-		            finished = true;
-		        }
-		        else
-		        {
-		        	//sleeping could be optional, but don't want to hog the CPU
-		            System.Threading.Thread.Sleep(100);
-		        }
-		    }
-		    //End workaround            
+            var tries = 0;
 
-            writer.DoFinalize();
+            try
+            {
+                while (!finished)
+                {
+                    writer.GetStatistics(streamIndex, stats);
+
+                    if (tries == maxTries)
+                    {
+                        var msg =
+                            string.Format(
+                                "Unable to save the MP3 file. Sink writer still has {0} bytes in the queue after waiting for {1} seconds.",
+                                stats.dwByteCountQueued,
+                                maxTimeInSeconds);
+                        throw new Exception(msg);
+                    }
+
+                    if (stats.dwByteCountQueued == 0)
+                    {
+                        finished = true;
+                    }
+                    else
+                    {
+                        //sleeping could be optional, but don't want to hog the CPU
+                        System.Threading.Thread.Sleep(sleepMs);
+                    }
+
+                    tries++;
+                }
+            }
+            finally
+            {
+                writer.DoFinalize();
+            }
         }
 
         private static long BytesToNsPosition(int bytes, WaveFormat waveFormat)
